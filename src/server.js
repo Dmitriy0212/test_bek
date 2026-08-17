@@ -45,7 +45,12 @@ app.use(
 app.use(
   cors({
     // credentials: true не працює з origin: "*" — браузер вимагає конкретну адресу
-   
+    origin: (origin, callback) => {
+      // Запити без заголовка Origin (curl, Postman, сервер-до-сервера) не є CORS-запитами
+      if (!origin) return callback(null, true);
+
+      return callback(null, allowedOrigins.includes(origin));
+    },
     credentials: true,
   }),
 );
