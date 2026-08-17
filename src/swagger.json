@@ -1,0 +1,1041 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Harmoniq API",
+    "description": "API for managing user profiles, authors, and their publications. Auth is based on httpOnly cookies, so the Authorize button does not work here: open `POST /api/auth/login` for how to sign in from these docs, and `POST /api/auth/refresh` for what to do once your session expires.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "/" },
+    { "url": "http://localhost:3000" }
+  ],
+  "tags": [
+    { "name": "Auth", "description": "Registration, login and session management" },
+    { "name": "Users", "description": "User profiles, avatars and saved articles" },
+    { "name": "Articles", "description": "Articles CRUD, listing, filtering and search" },
+    { "name": "Categories", "description": "Fixed list of article categories" }
+  ],
+  "paths": {
+    "/api/auth/register": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Register a new user",
+        "description": "Creates a new user account and starts a session (sets sessionId, accessToken and refreshToken cookies).\n\nThe avatar is optional. Send JSON if you do not have one, or multipart/form-data with an `avatar` file (images only, up to 1 MB) if you do. Both forms are accepted; the avatar can also be set later through PATCH /api/users/me/avatar.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterRequest" }
+            },
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/RegisterMultipartRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User successfully registered",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthUser" }
+              }
+            }
+          },
+          "400": {
+            "description": "Email is already in use / validation error",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Log in",
+        "description": "Authenticates a user by email and password and starts a session (sets sessionId, accessToken and refreshToken cookies).\n\nThis is also how you authorise inside Swagger. The Authorize button will not work for this API: auth rides on httpOnly cookies, and browsers forbid JavaScript from setting the `Cookie` header, so Swagger UI cannot pass them whatever you type into that dialog.\n\nInstead, run this endpoint right here with a real email and password. The server sets the cookies in your browser itself, and every protected endpoint starts working, because these docs are served from the same origin as the API.\n\nThe padlock icons stay open even after a successful login. Swagger UI has no way of knowing the cookies arrived, so judge by the server response, not by the icon.\n\nIf nothing works at all, check the Servers dropdown at the top of the page: it should be `/`. With `http://localhost:3000` selected on the deployed docs, requests go to your own machine, where there are no cookies.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully logged in",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthUser" }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Log out",
+        "description": "Deletes the current session and clears session cookies.",
+        "security": [{ "sessionAuth": [], "accessTokenAuth": [] }],
+        "responses": {
+          "204": {
+            "description": "Successfully logged out, no content"
+          },
+          "401": {
+            "description": "Missing or invalid access token. Either you are not logged in, or the 15-minute access token expired: see POST /api/auth/login and POST /api/auth/refresh.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/session": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Check the current session",
+        "description": "Validates the sessionId and accessToken cookies of the authenticated user.",
+        "security": [{ "sessionAuth": [], "accessTokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Session is valid",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SessionCheckResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing access token, session not found, access token expired or user not found",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Refresh a session",
+        "description": "Issues a new session using the sessionId and refreshToken cookies, and sets new session cookies.\n\nRun this when protected endpoints suddenly stop working. The `accessToken` cookie lives for 15 minutes, `sessionId` and `refreshToken` for 24 hours. Once those 15 minutes pass the browser drops the cookie by itself, and protected endpoints answer `{ \"message\": \"Missing access token\" }` again even though you did log in earlier.\n\nSo that message means one of two things: you never logged in here, or your 15 minutes ran out.\n\nYou do not need to log in again. This endpoint reads the `refreshToken` cookie, which is still valid, and issues a fresh set. The web app does the same thing in the background; Swagger UI has no such mechanism and will not do it for you.",
+        "security": [{ "sessionAuth": [], "refreshTokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Session successfully refreshed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RefreshResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "Session not found, invalid or expired refresh token",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "List users",
+        "description": "Returns a paginated list of all users, used for the authors page and the Top Creators block. Public: no session needed.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "default": 1 },
+            "description": "Page number"
+          },
+          {
+            "name": "perPage",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 5, "maximum": 20, "default": 20 },
+            "description": "Number of users per page"
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["createdAt", "articlesAmount"],
+              "default": "createdAt"
+            },
+            "description": "Use articlesAmount for a Top Creators ranking. Sorting happens server-side before pagination, over the whole collection, so the top N is accurate rather than computed from just the default page."
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["asc", "desc"], "default": "desc" },
+            "description": "Sort direction"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of users",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UsersListResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pagination query",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/{id}": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get public profile of a user",
+        "description": "Returns the public profile (name, avatar, number of articles) of a user by id.",
+        "parameters": [{ "$ref": "#/components/parameters/UserIdParam" }],
+        "responses": {
+          "200": {
+            "description": "User profile",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserPublicProfile" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid user id",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/me": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get the current user",
+        "description": "Returns the full profile of the authenticated user, including email. Used by the frontend to restore the session after a page reload. The public GET /api/users/{id} cannot replace it: that one returns name, avatarUrl and articlesAmount only.",
+        "security": [{ "sessionAuth": [], "accessTokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Current user",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CurrentUserResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Either you are not logged in, or the 15-minute access token expired: see POST /api/auth/login and POST /api/auth/refresh.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Users"],
+        "summary": "Update the current user",
+        "description": "Updates name and/or email of the authenticated user.",
+        "security": [{ "sessionAuth": [], "accessTokenAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateUserRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User successfully updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UpdateUserResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Either you are not logged in, or the 15-minute access token expired: see POST /api/auth/login and POST /api/auth/refresh.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "409": {
+            "description": "Email already in use",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/me/avatar": {
+      "patch": {
+        "tags": ["Users"],
+        "summary": "Update the current user's avatar",
+        "description": "Uploads a new avatar image (max 1MB) for the authenticated user and removes the previous one from storage.",
+        "security": [{ "sessionAuth": [], "accessTokenAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "avatar": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Image file, max 1MB"
+                  }
+                },
+                "required": ["avatar"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Avatar successfully updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UpdateAvatarResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "No file provided or invalid file type",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Either you are not logged in, or the 15-minute access token expired: see POST /api/auth/login and POST /api/auth/refresh.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/{id}/articles": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get articles authored by a user",
+        "description": "Returns a paginated list of articles created by the given user.",
+        "parameters": [
+          { "$ref": "#/components/parameters/UserIdParam" },
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/PerPageParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of the user's articles",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserArticlesResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid user id",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/me/saved": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get saved articles",
+        "description": "Returns the list of articles saved by the authenticated user, as full article objects with the owner populated.\n\nUnlike POST/DELETE on /api/users/me/saved/{id}, this returns full objects rather than ids: this is the endpoint that renders the saved-articles page from scratch, so it needs the actual data, not just a list of ids the client can't render anything from.",
+        "security": [{ "sessionAuth": [], "accessTokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "List of saved articles",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SavedArticlesResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Either you are not logged in, or the 15-minute access token expired: see POST /api/auth/login and POST /api/auth/refresh.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/me/saved/{id}": {
+      "post": {
+        "tags": ["Users"],
+        "summary": "Save an article",
+        "description": "Adds the article with the given id to the authenticated user's saved articles.\n\nReturns only the updated list of ids, not full article objects. The client already has the full article in hand when it calls this (that is where the save button lives), so echoing it back would be redundant. For full article data use GET /api/users/me/saved.",
+        "security": [{ "sessionAuth": [], "accessTokenAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ArticleIdParam" }],
+        "responses": {
+          "200": {
+            "description": "Article added to saved articles",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SavedArticleIdsResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Either you are not logged in, or the 15-minute access token expired: see POST /api/auth/login and POST /api/auth/refresh.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "404": {
+            "description": "Article not found",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Users"],
+        "summary": "Remove a saved article",
+        "description": "Removes the article with the given id from the authenticated user's saved articles.\n\nSame shape as POST on this path: only the updated list of ids, not full article objects, for the same reason.",
+        "security": [{ "sessionAuth": [], "accessTokenAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ArticleIdParam" }],
+        "responses": {
+          "200": {
+            "description": "Article removed from saved articles",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SavedArticleIdsResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Either you are not logged in, or the 15-minute access token expired: see POST /api/auth/login and POST /api/auth/refresh.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "404": {
+            "description": "Article not found in saved articles",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/articles/": {
+      "get": {
+        "tags": ["Articles"],
+        "summary": "List articles",
+        "description": "Returns a paginated list of articles, newest first. Filtering and search live in GET /api/articles/filter, this endpoint accepts pagination only.",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/PerPageParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of articles",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ArticleListResponse" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Articles"],
+        "summary": "Create an article",
+        "description": "Creates a new article owned by the authenticated user, with an image upload.",
+        "security": [{ "sessionAuth": [], "accessTokenAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/CreateArticleRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Article successfully created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ArticleMutationResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or missing article image",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Either you are not logged in, or the 15-minute access token expired: see POST /api/auth/login and POST /api/auth/refresh.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/articles/filter": {
+      "get": {
+        "tags": ["Articles"],
+        "summary": "List articles with filtering and sorting",
+        "description": "Returns a paginated list of articles filtered by category/search and sorted by the given field and order.",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/PerPageParam" },
+          { "$ref": "#/components/parameters/CategoryParam" },
+          { "$ref": "#/components/parameters/SearchParam" },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["createdAt", "date", "rate", "title"],
+              "default": "createdAt"
+            },
+            "description": "Field to sort articles by"
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["asc", "desc"], "default": "desc" },
+            "description": "Sort order"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated, filtered and sorted list of articles",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ArticleListResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/articles/{id}": {
+      "get": {
+        "tags": ["Articles"],
+        "summary": "Get an article by id",
+        "parameters": [{ "$ref": "#/components/parameters/ArticleIdParam" }],
+        "responses": {
+          "200": {
+            "description": "Article found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "article": { "$ref": "#/components/schemas/Article" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Article not found",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Articles"],
+        "summary": "Update an article",
+        "description": "Updates an article owned by the authenticated user. Only the owner can update it.",
+        "security": [{ "sessionAuth": [], "accessTokenAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ArticleIdParam" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/UpdateArticleRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Article successfully updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ArticleMutationResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Either you are not logged in, or the 15-minute access token expired: see POST /api/auth/login and POST /api/auth/refresh.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "403": {
+            "description": "Access denied - not the owner of the article",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "404": {
+            "description": "Article not found",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Articles"],
+        "summary": "Delete an article",
+        "description": "Deletes an article owned by the authenticated user. Only the owner can delete it.",
+        "security": [{ "sessionAuth": [], "accessTokenAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ArticleIdParam" }],
+        "responses": {
+          "204": {
+            "description": "Article successfully deleted, no content"
+          },
+          "401": {
+            "description": "Missing or invalid access token. Either you are not logged in, or the 15-minute access token expired: see POST /api/auth/login and POST /api/auth/refresh.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "403": {
+            "description": "Not allowed to delete this article",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "404": {
+            "description": "Article not found",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "tags": ["Categories"],
+        "summary": "List article categories",
+        "description": "Returns the fixed set of article categories. They live in a server constant rather than in the database, because the same list is also used as the enum on the Article model and in the create/update validation schemas, so there is a single source of truth.",
+        "responses": {
+          "200": {
+            "description": "Available categories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "type": "string", "enum": ["popular", "general"] },
+                  "example": ["popular", "general"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "sessionId",
+        "description": "Session id cookie, set on login/register/refresh."
+      },
+      "accessTokenAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "accessToken",
+        "description": "Access token cookie, required for protected routes together with sessionId."
+      },
+      "refreshTokenAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "refreshToken",
+        "description": "Refresh token cookie, required for POST /api/auth/refresh together with sessionId."
+      }
+    },
+    "parameters": {
+      "UserIdParam": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "MongoDB ObjectId of the user"
+      },
+      "ArticleIdParam": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "MongoDB ObjectId of the article"
+      },
+      "PageParam": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1, "default": 1 },
+        "description": "Page number"
+      },
+      "PerPageParam": {
+        "name": "perPage",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 5, "maximum": 20, "default": 10 },
+        "description": "Number of items per page"
+      },
+      "CategoryParam": {
+        "name": "category",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string", "enum": ["popular", "general"] },
+        "description": "Filter articles by category"
+      },
+      "SearchParam": {
+        "name": "search",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" },
+        "description": "Case-insensitive search across article title and description"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["name", "email", "password"],
+        "properties": {
+          "name": { "type": "string", "minLength": 2, "maxLength": 32 },
+          "email": { "type": "string", "format": "email", "maxLength": 64 },
+          "password": { "type": "string", "minLength": 8, "maxLength": 64 }
+        }
+      },
+      "RegisterMultipartRequest": {
+        "type": "object",
+        "description": "Same fields as RegisterRequest plus an optional avatar file. Use this form only when you actually have an avatar to send.",
+        "required": ["name", "email", "password"],
+        "properties": {
+          "name": { "type": "string", "minLength": 2, "maxLength": 32 },
+          "email": { "type": "string", "format": "email", "maxLength": 64 },
+          "password": { "type": "string", "minLength": 8, "maxLength": 64 },
+          "avatar": {
+            "type": "string",
+            "format": "binary",
+            "description": "Optional avatar image, max 1 MB"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        }
+      },
+      "AuthUser": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "avatarUrl": { "type": "string", "nullable": true }
+        }
+      },
+      "RefreshResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "Successfully refreshed a session!" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "accessToken": { "type": "string" }
+            }
+          }
+        }
+      },
+      "SessionCheckResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "example": true }
+        }
+      },
+      "UpdateUserRequest": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "name": { "type": "string", "minLength": 2, "maxLength": 32 },
+          "email": { "type": "string", "format": "email", "maxLength": 64 }
+        }
+      },
+      "UpdateUserResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "User updated successfully" },
+          "data": { "$ref": "#/components/schemas/AuthUser" }
+        }
+      },
+      "UpdateAvatarResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "message": { "type": "string", "example": "Фото успішно завантажено" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "avatarUrl": { "type": "string" }
+            }
+          }
+        }
+      },
+      "UserPublicProfile": {
+        "type": "object",
+        "properties": {
+          "_id": { "type": "string" },
+          "name": { "type": "string" },
+          "avatarUrl": { "type": "string", "nullable": true },
+          "articlesAmount": { "type": "integer" }
+        }
+      },
+      "UserListItem": {
+        "type": "object",
+        "description": "User as returned by the list endpoint: only what an author card needs.",
+        "properties": {
+          "_id": { "type": "string" },
+          "name": { "type": "string" },
+          "avatarUrl": { "type": "string", "nullable": true },
+          "articlesAmount": { "type": "integer", "default": 0 }
+        }
+      },
+      "UsersListResponse": {
+        "type": "object",
+        "properties": {
+          "page": { "type": "integer" },
+          "perPage": { "type": "integer" },
+          "totalItems": { "type": "integer" },
+          "totalPages": { "type": "integer" },
+          "users": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/UserListItem" }
+          }
+        }
+      },
+      "CurrentUser": {
+        "type": "object",
+        "properties": {
+          "_id": { "type": "string" },
+          "name": { "type": "string", "minLength": 2, "maxLength": 32 },
+          "email": { "type": "string", "format": "email" },
+          "avatarUrl": { "type": "string", "nullable": true },
+          "articlesAmount": { "type": "integer", "default": 0 },
+          "savedArticles": { "type": "array", "items": { "type": "string" } },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CurrentUserResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "example": true },
+          "data": {
+            "type": "object",
+            "properties": {
+              "user": { "$ref": "#/components/schemas/CurrentUser" }
+            }
+          }
+        }
+      },
+      "ArticleListItem": {
+        "type": "object",
+        "description": "Article as returned by any list endpoint. Same as Article but without the article body: cards do not need it, and at ~3000 characters per item it would add roughly 64 KB to a page of 20. Fetch GET /api/articles/{id} for the full text.",
+        "properties": {
+          "_id": { "type": "string" },
+          "title": { "type": "string", "minLength": 3, "maxLength": 48 },
+          "desc": { "type": "string", "maxLength": 200 },
+          "img": { "type": "string" },
+          "rate": { "type": "number", "default": 0 },
+          "date": { "type": "string", "example": "2026-08-11" },
+          "category": { "type": "string", "enum": ["popular", "general"], "default": "general" },
+          "ownerId": { "$ref": "#/components/schemas/ArticleAuthor" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ArticleAuthor": {
+        "type": "object",
+        "description": "Article owner, populated by the server. Never a bare id.",
+        "properties": {
+          "_id": { "type": "string" },
+          "name": { "type": "string" },
+          "avatarUrl": { "type": "string", "nullable": true }
+        }
+      },
+      "Article": {
+        "type": "object",
+        "properties": {
+          "_id": { "type": "string" },
+          "title": { "type": "string", "minLength": 3, "maxLength": 48 },
+          "desc": { "type": "string", "maxLength": 200 },
+          "article": { "type": "string", "minLength": 100, "maxLength": 4000 },
+          "img": { "type": "string" },
+          "rate": { "type": "number", "default": 0 },
+          "date": { "type": "string", "example": "2026-08-11" },
+          "category": { "type": "string", "enum": ["popular", "general"], "default": "general" },
+          "ownerId": { "$ref": "#/components/schemas/ArticleAuthor" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateArticleRequest": {
+        "type": "object",
+        "required": ["title", "article", "img"],
+        "properties": {
+          "title": { "type": "string", "minLength": 3, "maxLength": 48 },
+          "desc": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Optional short teaser shown on article cards. If omitted, the server builds it from the first 150 characters of article. The create form in the design does not collect it, so normally you leave this empty."
+          },
+          "article": { "type": "string", "minLength": 100, "maxLength": 4000 },
+          "category": { "type": "string", "enum": ["popular", "general"] },
+          "img": {
+            "type": "string",
+            "format": "binary",
+            "description": "Article image, max 1MB"
+          }
+        }
+      },
+      "UpdateArticleRequest": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "title": { "type": "string", "minLength": 3, "maxLength": 48 },
+          "desc": { "type": "string", "maxLength": 200 },
+          "article": { "type": "string", "minLength": 100, "maxLength": 4000 },
+          "category": { "type": "string", "enum": ["popular", "general"] },
+          "img": {
+            "type": "string",
+            "format": "binary",
+            "description": "Article image, max 1MB"
+          }
+        }
+      },
+      "ArticleMutationResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer", "example": 200 },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/Article" }
+        }
+      },
+      "ArticleListResponse": {
+        "type": "object",
+        "properties": {
+          "page": { "type": "integer" },
+          "perPage": { "type": "integer" },
+          "totalItems": { "type": "integer" },
+          "totalPages": { "type": "integer" },
+          "articles": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ArticleListItem" }
+          }
+        }
+      },
+      "UserArticlesResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer", "example": 200 },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "articles": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ArticleListItem" }
+              },
+              "page": { "type": "integer" },
+              "perPage": { "type": "integer" },
+              "totalArticles": { "type": "integer" },
+              "totalPages": { "type": "integer" },
+              "hasNextPage": { "type": "boolean" },
+              "hasPreviousPage": { "type": "boolean" }
+            }
+          }
+        }
+      },
+      "SavedArticlesResponse": {
+        "type": "object",
+        "properties": {
+          "savedArticles": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Article" }
+          }
+        }
+      },
+      "SavedArticleIdsResponse": {
+        "type": "object",
+        "properties": {
+          "savedArticles": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
