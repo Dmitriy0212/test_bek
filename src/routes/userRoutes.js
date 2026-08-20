@@ -22,6 +22,9 @@ userRoutes.patch("/me", authMiddleware, celebrate(updateUserSchema), ctrl.update
 // Додати/змінити аватар (private)
 userRoutes.patch("/me/avatar", authMiddleware, upload.single("avatar"), ctrl.updateAvatar);
 
+// Видалити аватар (private)
+userRoutes.delete("/me/avatar", authMiddleware, ctrl.deleteAvatar);
+
 // Отримати статті користувача (public)
 userRoutes.get("/:id/articles", celebrate(getUserArticlesSchema), ctrl.getUserArticles);
 

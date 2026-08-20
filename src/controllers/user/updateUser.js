@@ -24,7 +24,7 @@ export const updateUser = async (req, res, next) => {
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { ...(name && { name }), ...(email && { email }) },
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     );
 
     if (!updatedUser) {

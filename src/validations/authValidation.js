@@ -3,11 +3,19 @@ import { emailSchema } from "./emailSchema.js";
 
 export const registerSchema = {
   [Segments.BODY]: Joi.object({
-      name: Joi.string()
+    name: Joi.string()
       .trim()
       .min(2)
       .max(32)
       .pattern(/^(?=.*[A-Za-zА-Яа-яІіЇїЄєҐґ])[A-Za-zА-Яа-яІіЇїЄєҐґ0-9\s'-]+$/)
+      .messages({
+        "string.empty": "Name is required",
+        "string.min": "Name must be at least 2 characters long",
+        "string.max": "Name must not exceed 32 characters",
+        "string.pattern.base":
+          "Name can contain only letters, numbers, spaces, apostrophe and hyphen",
+        "any.required": "Name is required",
+      })
       .required(),
 
     email: emailSchema().required(),
@@ -25,7 +33,12 @@ export const registerSchema = {
         return value;
       })
       .messages({
-        "string.maxBytes": "Password must not exceed 72 bytes",
+        "string.empty": "Password is required",
+        "string.min": "Password must be at least 8 characters long",
+        "string.max": "Password must not exceed 64 characters",
+        "string.pattern.base": "Password cannot contain only spaces",
+        "string.maxBytes": "Password is too long",
+        "any.required": "Password is required",
       })
       .required(),
   }),

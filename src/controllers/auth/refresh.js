@@ -18,35 +18,30 @@ export const refresh = async (req, res) => {
     throw createHttpError(401, "Session not found");
   }
 
-  const session = await Session.findById(sessionId);
+  // findOneAndDelete перевіряє й видаляє сесію одним атомарним запитом —
+  // без цього два паралельні /refresh (React StrictMode, паралельні
+  // 401-retry) обидва встигають пройти findById до видалення і обидва
+  // створюють нову сесію
+  const session = await Session.findOneAndDelete({ _id: sessionId, refreshToken });
 
   if (!session) {
     throw createHttpError(401, "Session not found");
   }
 
-  if (session.refreshToken !== refreshToken) {
-    throw createHttpError(401, "Invalid refresh token");
-  }
-
   if (session.refreshTokenValidUntil < new Date()) {
-    await Session.findByIdAndDelete(sessionId);
-
     throw createHttpError(401, "Refresh token expired");
   }
 
   const userId = session.userId;
 
-  await Session.findByIdAndDelete(sessionId);
-
   const newSession = await createSession(userId);
 
   setSessionCookies(res, newSession);
 
+  // accessToken живе лише в httpOnly cookie — дублювати його в тілі
+  // відповіді зводить нанівець захист httpOnly від XSS
   res.status(200).json({
     status: 200,
     message: "Successfully refreshed a session!",
-    data: {
-      accessToken: newSession.accessToken,
-    },
   });
 };

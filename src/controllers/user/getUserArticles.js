@@ -1,4 +1,4 @@
-import { Article } from "../../models/Article.js";
+import { Article } from "../../models/index.js";
 
 export const getUserArticles = async (req, res, next) => {
   const { id } = req.params;

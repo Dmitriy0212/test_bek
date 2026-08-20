@@ -347,6 +347,28 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": ["Users"],
+        "summary": "Remove the current user's avatar",
+        "description": "Clears the authenticated user's avatar and removes the image from storage. Safe to call when there is no avatar set: returns 200 with an empty avatarUrl instead of an error.",
+        "security": [{ "sessionAuth": [], "accessTokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Avatar removed (or already empty)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeleteAvatarResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Either you are not logged in, or the 15-minute access token expired: see POST /api/auth/login and POST /api/auth/refresh.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
       }
     },
     "/api/users/{id}/articles": {
@@ -839,6 +861,27 @@
             "type": "object",
             "properties": {
               "avatarUrl": { "type": "string" }
+            }
+          }
+        }
+      },
+      "DeleteAvatarResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "message": {
+            "type": "string",
+            "example": "Фото успішно видалено",
+            "description": "\"Фото успішно видалено\" if an avatar was removed, \"Аватар вже відсутній\" if there was none to begin with"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "avatarUrl": {
+                "type": "string",
+                "example": "",
+                "description": "Always an empty string on success, not null"
+              }
             }
           }
         }

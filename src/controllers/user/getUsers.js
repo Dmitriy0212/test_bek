@@ -5,7 +5,12 @@ export const getUsers = async (req, res, next) => {
 
   const skip = (page - 1) * perPage;
 
-  const usersQuery = User.find().select("name avatarUrl articlesAmount");
+  // Цей ендпоінт живить AuthorsPage і Top Creators — обидва показують юзера
+  // як "автора"/"creator", тому виключаємо тих, хто ще не опублікував жодної
+  // статті (зареєструвався, але нічого не написав)
+  const usersQuery = User.find({ articlesAmount: { $gt: 0 } }).select(
+    "name avatarUrl articlesAmount",
+  );
 
   const [totalItems, users] = await Promise.all([
     usersQuery.clone().countDocuments(),

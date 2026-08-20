@@ -1,6 +1,6 @@
 import createHttpError from "http-errors";
 import { v2 as cloudinary } from "cloudinary";
-import { User } from "../../models/User.js";
+import { User } from "../../models/index.js";
 import { saveFileToCloudinary } from "../../utils/saveFileToCloudinary.js";
 
 export const updateAvatar = async (req, res, next) => {
@@ -16,8 +16,12 @@ export const updateAvatar = async (req, res, next) => {
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { avatarUrl: avatarUrl },
-      { new: true }
+      { returnDocument: "after" },
     );
+
+    if (!user) {
+      throw createHttpError(404, "User not found");
+    }
 
     if (oldAvatarUrl) {
       try {
@@ -28,7 +32,6 @@ export const updateAvatar = async (req, res, next) => {
       }
     }
 
-  
     res.status(200).json({
       status: "success",
       message: "Фото успішно завантажено",

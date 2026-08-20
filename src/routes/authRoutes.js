@@ -15,7 +15,7 @@ authRoutes.post("/register", upload.single("avatar"), celebrate(registerSchema),
 // Логін (public)
 authRoutes.post("/login", celebrate(loginSchema), ctrl.login);
 
-authRoutes.post("/logout", ctrl.logout);
+authRoutes.post("/logout", authMiddleware, ctrl.logout);
 
 // Оновлення access/refresh токена (protected)
 // authRoutes.post("/refresh", ctrl.refresh);

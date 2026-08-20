@@ -1,5 +1,10 @@
 import { Article } from "../../models/Article.js";
- 
+
+// Екранує спецсимволи regex у пошуковому рядку перед підстановкою в $regex —
+// без цього юзер міг би передати довільний патерн (не тільки повільний, а й
+// такий, що матчить більше, ніж він ввів)
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export const getArticlesFiltered = async (req, res, next) => {
   try {
     const {
@@ -20,9 +25,11 @@ export const getArticlesFiltered = async (req, res, next) => {
     }
  
     if (search) {
+      const escapedSearch = escapeRegex(search);
+
       filter.$or = [
-        { title: { $regex: search, $options: "i" } },
-        { desc: { $regex: search, $options: "i" } },
+        { title: { $regex: escapedSearch, $options: "i" } },
+        { desc: { $regex: escapedSearch, $options: "i" } },
       ];
     }
  

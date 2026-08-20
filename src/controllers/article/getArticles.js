@@ -1,4 +1,4 @@
-import { Article } from "../../models/Article.js";
+import { Article } from "../../models/index.js";
 
 export const getArticles = async (req, res, next) => {
   const { page = 1, perPage = 10 } = req.query;

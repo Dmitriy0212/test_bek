@@ -1,6 +1,7 @@
 import { getUserInfo } from "./getUserInfo.js";
 import { updateUser } from "./updateUser.js";
 import { updateAvatar } from "./updateAvatar.js";
+import { deleteAvatar } from "./deleteAvatar.js";
 import { getUserArticles } from "./getUserArticles.js";
 import { getSavedArticles } from "./getSavedArticles.js";
 import { addSavedArticle } from "./addSavedArticle.js";
@@ -13,6 +14,7 @@ export const user = {
   getUsers,
   updateUser,
   updateAvatar,
+  deleteAvatar,
   getUserArticles,
   getSavedArticles,
   addSavedArticle,

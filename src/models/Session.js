@@ -19,9 +19,13 @@ const sessionSchema = new Schema(
       type: Date,
       required: true,
     },
+    // expires: 0 — TTL-індекс: MongoDB сам прибирає документ одразу після
+    // цієї дати. Без нього хто просто закрив вкладку без /logout лишає
+    // рядок сесії в базі назавжди (Atlas M0 — 512 МБ, вже під тиском)
     refreshTokenValidUntil: {
       type: Date,
       required: true,
+      expires: 0,
     },
   },
   { timestamps: true, versionKey: false },

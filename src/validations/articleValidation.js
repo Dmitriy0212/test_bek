@@ -37,7 +37,10 @@ export const getArticlesFilteredSchema = {
     category: Joi.string()
       .valid(...CATEGORIES)
       .optional(),
-    search: Joi.string().trim().allow(""),
+    // max(100): без ліміту довгий search (напр. "(a+)+$") підставляється
+    // напряму в $regex без індексу — full collection scan, що палить CPU
+    // пропорційно довжині рядка
+    search: Joi.string().trim().max(100).allow(""),
     sortBy: Joi.string().valid("createdAt", "date", "rate", "title").default("createdAt"),
     order: Joi.string().valid("asc", "desc").default("desc"),
   }),
